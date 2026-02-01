@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["ExpoVideoWatermarkModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.videowatermark.ExpoVideoWatermarkModule"]
+  }
+}

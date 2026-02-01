@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "expo-video-watermark": ["../src/index"],
+      "expo-video-watermark/*": ["../src/*"]
+    }
+  }
+}
