@@ -25,7 +25,7 @@ if (useManagedAndroidSdkVersions) {
   project.android {
     compileSdkVersion safeExtGet("compileSdkVersion", 36)
     defaultConfig {
-      minSdkVersion safeExtGet("minSdkVersion", 24)
+      minSdkVersion safeExtGet("minSdkVersion", 33)
       targetSdkVersion safeExtGet("targetSdkVersion", 36)
     }
   }
@@ -40,4 +40,19 @@ android {
   lintOptions {
     abortOnError false
   }
+
+  // Media3 Transformer + effect dependencies for watermarking (replacing FFmpeg)
+}
+
+dependencies {
+  def media3_version = "1.9.1"
+
+  // Core Editing & Transformation (What you have, updated)
+  implementation "androidx.media3:media3-transformer:$media3_version"
+  implementation "androidx.media3:media3-effect:$media3_version"
+  implementation "androidx.media3:media3-common-ktx:$media3_version"
+
+  // Recommended for API 33+ Workflows:
+  implementation "androidx.media3:media3-exoplayer:$media3_version" // For real-time preview
+  implementation "androidx.media3:media3-muxer:$media3_version"       // High-performance MP4/fragmented MP4 output
 }
