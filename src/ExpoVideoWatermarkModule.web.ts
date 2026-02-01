@@ -1,14 +1,8 @@
 import { registerWebModule, NativeModule } from 'expo';
 
-import { ExpoVideoWatermarkModuleEvents } from './ExpoVideoWatermark.types';
-
-class ExpoVideoWatermarkModule extends NativeModule<ExpoVideoWatermarkModuleEvents> {
-  PI = Math.PI;
-  async setValueAsync(value: string): Promise<void> {
-    this.emit('onChange', { value });
-  }
-  hello() {
-    return 'Hello world! 👋';
+class ExpoVideoWatermarkModule extends NativeModule {
+  async watermarkVideo(_videoPath: string, _imagePath: string, _outputPath: string): Promise<string> {
+    throw new Error('watermarkVideo is not supported on web');
   }
 }
 

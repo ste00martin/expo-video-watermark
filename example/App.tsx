@@ -1,62 +1,39 @@
-import { useEvent } from 'expo';
-import ExpoVideoWatermark, { ExpoVideoWatermarkView } from 'expo-video-watermark';
-import { Button, SafeAreaView, ScrollView, Text, View } from 'react-native';
+import ExpoVideoWatermark from 'expo-video-watermark';
+import { Button, SafeAreaView, Text, View } from 'react-native';
+import { Paths } from 'expo-file-system';
 
 export default function App() {
-  const onChangePayload = useEvent(ExpoVideoWatermark, 'onChange');
-
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.container}>
-        <Text style={styles.header}>Module API Example</Text>
-        <Group name="Constants">
-          <Text>{ExpoVideoWatermark.PI}</Text>
-        </Group>
-        <Group name="Functions">
-          <Text>{ExpoVideoWatermark.hello()}</Text>
-        </Group>
-        <Group name="Async functions">
-          <Button
-            title="Set value"
-            onPress={async () => {
-              await ExpoVideoWatermark.setValueAsync('Hello from JS!');
-            }}
-          />
-        </Group>
-        <Group name="Events">
-          <Text>{onChangePayload?.value}</Text>
-        </Group>
-        <Group name="Views">
-          <ExpoVideoWatermarkView
-            url="https://www.example.com"
-            onLoad={({ nativeEvent: { url } }) => console.log(`Loaded: ${url}`)}
-            style={styles.view}
-          />
-        </Group>
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
+      <View style={styles.content}>
+        <Text style={styles.header}>Video Watermark Example</Text>
+        <Button
+          title="Watermark video"
+          onPress={async () => {
+            try {
+              // Replace inputVideoPath and inputImagePath with actual local file paths on device/emulator
+              const inputVideoPath = '/path/to/input.mp4';
+              const inputImagePath = '/path/to/watermark.png';
+              const outputPath = Paths.document.uri + '/watermarked.mp4';
 
-function Group(props: { name: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.group}>
-      <Text style={styles.groupHeader}>{props.name}</Text>
-      {props.children}
-    </View>
+              const result = await ExpoVideoWatermark.watermarkVideo(inputVideoPath, inputImagePath, outputPath);
+              alert('Watermarked video written to: ' + result);
+            } catch (e: any) {
+              alert('Watermark failed: ' + e.message);
+            }
+          }}
+        />
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = {
   header: {
-    fontSize: 30,
-    margin: 20,
-  },
-  groupHeader: {
-    fontSize: 20,
+    fontSize: 24,
     marginBottom: 20,
   },
-  group: {
+  content: {
     margin: 20,
     backgroundColor: '#fff',
     borderRadius: 10,
@@ -65,9 +42,5 @@ const styles = {
   container: {
     flex: 1,
     backgroundColor: '#eee',
-  },
-  view: {
-    flex: 1,
-    height: 200,
   },
 };
