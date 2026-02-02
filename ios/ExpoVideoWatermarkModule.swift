@@ -14,17 +14,22 @@ public class ExpoVideoWatermarkModule: Module {
   }
 
   private func processWatermark(videoPath: String, imagePath: String, outputPath: String, promise: Promise) {
+    // Strip file:// prefix if present
+    let cleanVideoPath = videoPath.hasPrefix("file://") ? String(videoPath.dropFirst(7)) : videoPath
+    let cleanImagePath = imagePath.hasPrefix("file://") ? String(imagePath.dropFirst(7)) : imagePath
+    let cleanOutputPath = outputPath.hasPrefix("file://") ? String(outputPath.dropFirst(7)) : outputPath
+
     // Validate video file exists
-    let videoURL = URL(fileURLWithPath: videoPath)
-    guard FileManager.default.fileExists(atPath: videoPath) else {
-      promise.reject("VIDEO_NOT_FOUND", "Video file not found at path: \(videoPath)")
+    let videoURL = URL(fileURLWithPath: cleanVideoPath)
+    guard FileManager.default.fileExists(atPath: cleanVideoPath) else {
+      promise.reject("VIDEO_NOT_FOUND", "Video file not found at path: \(cleanVideoPath)")
       return
     }
 
     // Validate image file exists and load it
-    guard FileManager.default.fileExists(atPath: imagePath),
-          let watermarkImage = UIImage(contentsOfFile: imagePath) else {
-      promise.reject("IMAGE_NOT_FOUND", "Watermark image not found at path: \(imagePath)")
+    guard FileManager.default.fileExists(atPath: cleanImagePath),
+          let watermarkImage = UIImage(contentsOfFile: cleanImagePath) else {
+      promise.reject("IMAGE_NOT_FOUND", "Watermark image not found at path: \(cleanImagePath)")
       return
     }
 
@@ -128,7 +133,7 @@ public class ExpoVideoWatermarkModule: Module {
     videoComposition.instructions = [instruction]
 
     // Setup export
-    let outputURL = URL(fileURLWithPath: outputPath)
+    let outputURL = URL(fileURLWithPath: cleanOutputPath)
 
     // Remove existing file if present
     try? FileManager.default.removeItem(at: outputURL)

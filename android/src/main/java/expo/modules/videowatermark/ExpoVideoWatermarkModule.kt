@@ -45,29 +45,34 @@ class ExpoVideoWatermarkModule : Module() {
     outputPath: String,
     promise: Promise
   ) {
+    // Strip file:// prefix if present
+    val cleanVideoPath = videoPath.removePrefix("file://")
+    val cleanImagePath = imagePath.removePrefix("file://")
+    val cleanOutputPath = outputPath.removePrefix("file://")
+
     // Validate video file exists
-    val videoFile = File(videoPath)
+    val videoFile = File(cleanVideoPath)
     if (!videoFile.exists()) {
-      promise.reject("VIDEO_NOT_FOUND", "Video file not found at path: $videoPath", null)
+      promise.reject("VIDEO_NOT_FOUND", "Video file not found at path: $cleanVideoPath", null)
       return
     }
 
     // Validate image file exists
-    val imageFile = File(imagePath)
+    val imageFile = File(cleanImagePath)
     if (!imageFile.exists()) {
-      promise.reject("IMAGE_NOT_FOUND", "Watermark image not found at path: $imagePath", null)
+      promise.reject("IMAGE_NOT_FOUND", "Watermark image not found at path: $cleanImagePath", null)
       return
     }
 
     // Load the watermark bitmap
-    val watermarkBitmap: Bitmap? = BitmapFactory.decodeFile(imagePath)
+    val watermarkBitmap: Bitmap? = BitmapFactory.decodeFile(cleanImagePath)
     if (watermarkBitmap == null) {
-      promise.reject("IMAGE_DECODE_ERROR", "Failed to decode image at: $imagePath", null)
+      promise.reject("IMAGE_DECODE_ERROR", "Failed to decode image at: $cleanImagePath", null)
       return
     }
 
     // Ensure output directory exists
-    val outputFile = File(outputPath)
+    val outputFile = File(cleanOutputPath)
     outputFile.parentFile?.mkdirs()
 
     // Remove existing output file if present
@@ -78,7 +83,7 @@ class ExpoVideoWatermarkModule : Module() {
     // Get video dimensions to calculate scale
     val retriever = MediaMetadataRetriever()
     try {
-      retriever.setDataSource(videoPath)
+      retriever.setDataSource(cleanVideoPath)
     } catch (e: Exception) {
       promise.reject("VIDEO_METADATA_ERROR", "Failed to read video metadata: ${e.message}", e)
       return
@@ -122,7 +127,7 @@ class ExpoVideoWatermarkModule : Module() {
     )
 
     // Create media item from video
-    val mediaItem = MediaItem.fromUri("file://$videoPath")
+    val mediaItem = MediaItem.fromUri("file://$cleanVideoPath")
 
     // Create edited media item with effects
     val editedMediaItem = EditedMediaItem.Builder(mediaItem)
@@ -138,7 +143,7 @@ class ExpoVideoWatermarkModule : Module() {
         .addListener(object : Transformer.Listener {
           override fun onCompleted(composition: Composition, exportResult: ExportResult) {
             watermarkBitmap.recycle()
-            promise.resolve(outputPath)
+            promise.resolve(cleanOutputPath)
           }
 
           override fun onError(
@@ -156,7 +161,7 @@ class ExpoVideoWatermarkModule : Module() {
         })
         .build()
 
-      transformer.start(editedMediaItem, outputPath)
+      transformer.start(editedMediaItem, cleanOutputPath)
     }
   }
 }
