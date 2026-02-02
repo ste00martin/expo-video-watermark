@@ -1,35 +1,52 @@
 # expo-video-watermark
 
-Creating video watermarks on locally stored videos
+An Expo native module for adding watermark images to videos on iOS and Android.
 
-# API documentation
+## Installation
 
-- [Documentation for the latest stable release](https://docs.expo.dev/versions/latest/sdk/video-watermark/)
-- [Documentation for the main branch](https://docs.expo.dev/versions/unversioned/sdk/video-watermark/)
-
-# Installation in managed Expo projects
-
-For [managed](https://docs.expo.dev/archive/managed-vs-bare/) Expo projects, please follow the installation instructions in the [API documentation for the latest stable release](#api-documentation). If you follow the link and there is no documentation available then this library is not yet usable within managed projects &mdash; it is likely to be included in an upcoming Expo SDK release.
-
-# Installation in bare React Native projects
-
-For bare React Native projects, you must ensure that you have [installed and configured the `expo` package](https://docs.expo.dev/bare/installing-expo-modules/) before continuing.
-
-### Add the package to your npm dependencies
-
-```
-npm install expo-video-watermark
+```bash
+npx expo install expo-video-watermark
 ```
 
-### Configure for Android
+## Usage
 
+```typescript
+import ExpoVideoWatermark from 'expo-video-watermark';
 
+// Add a watermark to a video
+const outputPath = await ExpoVideoWatermark.watermarkVideo(
+  '/path/to/source/video.mp4',
+  '/path/to/watermark.png',
+  '/path/to/output/video.mp4'
+);
 
+console.log('Watermarked video saved to:', outputPath);
+```
 
-### Configure for iOS
+## API
 
-Run `npx pod-install` after installing the npm package.
+### `watermarkVideo(videoPath, imagePath, outputPath)`
 
-# Contributing
+Adds a watermark image onto a video and writes the result to the specified output path.
 
-Contributions are very welcome! Please refer to guidelines described in the [contributing guide]( https://github.com/expo/expo#contributing).
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `videoPath` | `string` | Local filesystem path to the source MP4 video |
+| `imagePath` | `string` | Local filesystem path to the PNG watermark image |
+| `outputPath` | `string` | Local filesystem path where the output MP4 should be written |
+
+**Returns:** `Promise<string>` - Resolves with the output path on success.
+
+## Platform Support
+
+| Platform | Supported |
+|----------|-----------|
+| iOS | Yes |
+| Android | Yes |
+| Web | No |
+
+## License
+
+MIT
