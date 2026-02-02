@@ -51,36 +51,36 @@ class ExpoVideoWatermarkModule : Module() {
     val cleanImagePath = imagePath.removePrefix("file://")
     val cleanOutputPath = outputPath.removePrefix("file://")
 
-    // Validate video file exists
+    // Step 1: Validate video file exists
     val videoFile = File(cleanVideoPath)
     if (!videoFile.exists()) {
-      promise.reject("VIDEO_NOT_FOUND", "Video file not found at path: $cleanVideoPath", null)
+      promise.reject("STEP1_VIDEO_NOT_FOUND", "[Step 1] Video file not found at path: $cleanVideoPath", null)
       return
     }
 
-    // Validate image file exists
+    // Step 2: Validate image file exists
     val imageFile = File(cleanImagePath)
     if (!imageFile.exists()) {
-      promise.reject("IMAGE_NOT_FOUND", "Watermark image not found at path: $cleanImagePath", null)
+      promise.reject("STEP2_IMAGE_NOT_FOUND", "[Step 2] Watermark image not found at path: $cleanImagePath", null)
       return
     }
 
-    // Load the watermark bitmap with ARGB_8888 config for GPU compatibility
+    // Step 3: Load the watermark bitmap with ARGB_8888 config for GPU compatibility
     val options = BitmapFactory.Options().apply {
       inPreferredConfig = Bitmap.Config.ARGB_8888
     }
     val decodedBitmap: Bitmap? = BitmapFactory.decodeFile(cleanImagePath, options)
     if (decodedBitmap == null) {
-      promise.reject("IMAGE_DECODE_ERROR", "Failed to decode image at: $cleanImagePath", null)
+      promise.reject("STEP3_IMAGE_DECODE_ERROR", "[Step 3] Failed to decode image at: $cleanImagePath", null)
       return
     }
 
-    // Ensure bitmap is in ARGB_8888 format (required for Media3 GPU processing)
+    // Step 4: Ensure bitmap is in ARGB_8888 format (required for Media3 GPU processing)
     val watermarkBitmap: Bitmap = if (decodedBitmap.config != Bitmap.Config.ARGB_8888) {
       val converted = decodedBitmap.copy(Bitmap.Config.ARGB_8888, false)
       decodedBitmap.recycle()
       if (converted == null) {
-        promise.reject("IMAGE_DECODE_ERROR", "Failed to convert image to ARGB_8888 format", null)
+        promise.reject("STEP4_IMAGE_CONVERT_ERROR", "[Step 4] Failed to convert image to ARGB_8888 format", null)
         return
       }
       converted
@@ -88,7 +88,7 @@ class ExpoVideoWatermarkModule : Module() {
       decodedBitmap
     }
 
-    // Ensure output directory exists
+    // Step 5: Ensure output directory exists
     val outputFile = File(cleanOutputPath)
     outputFile.parentFile?.mkdirs()
 
@@ -97,12 +97,13 @@ class ExpoVideoWatermarkModule : Module() {
       outputFile.delete()
     }
 
-    // Get video dimensions to calculate scale
+    // Step 6: Get video dimensions to calculate scale
     val retriever = MediaMetadataRetriever()
     try {
       retriever.setDataSource(cleanVideoPath)
     } catch (e: Exception) {
-      promise.reject("VIDEO_METADATA_ERROR", "Failed to read video metadata: ${e.message}", e)
+      watermarkBitmap.recycle()
+      promise.reject("STEP6_VIDEO_METADATA_ERROR", "[Step 6] Failed to read video metadata: ${e.message}", e)
       return
     }
 
@@ -112,81 +113,112 @@ class ExpoVideoWatermarkModule : Module() {
     retriever.release()
 
     if (rawVideoWidth <= 0 || rawVideoHeight <= 0) {
-      promise.reject("VIDEO_METADATA_ERROR", "Failed to get video dimensions", null)
+      watermarkBitmap.recycle()
+      promise.reject("STEP6_VIDEO_DIMENSIONS_ERROR", "[Step 6] Failed to get video dimensions (width=$rawVideoWidth, height=$rawVideoHeight)", null)
       return
     }
 
-    // Account for video rotation - swap dimensions if rotated 90 or 270 degrees
+    // Step 7: Account for video rotation - swap dimensions if rotated 90 or 270 degrees
     val (videoWidth, videoHeight) = if (rotation == 90 || rotation == 270) {
       rawVideoHeight to rawVideoWidth
     } else {
       rawVideoWidth to rawVideoHeight
     }
 
-    // Calculate scale to make watermark span full video width, maintaining aspect ratio
+    // Step 8: Calculate scale to make watermark span full video width, maintaining aspect ratio
     val watermarkWidth = watermarkBitmap.width.toFloat()
+    val watermarkHeight = watermarkBitmap.height.toFloat()
     val scale = videoWidth / watermarkWidth
 
-    // Create overlay settings for full-width bottom positioning
+    // Step 9: Create overlay settings for full-width bottom positioning
     // In Media3, coordinates are normalized: (0,0) is center
     // x range [-1, 1] (left to right), y range [-1, 1] (bottom to top)
-    val overlaySettings = StaticOverlaySettings.Builder()
-      .setScale(scale, scale)  // Scale uniformly to match video width
-      .setOverlayFrameAnchor(0f, -1f)  // Anchor at bottom-center of watermark
-      .setBackgroundFrameAnchor(0f, -1f)  // Position at very bottom of video
-      .build()
+    val overlaySettings = try {
+      StaticOverlaySettings.Builder()
+        .setScale(scale, scale)  // Scale uniformly to match video width
+        .setOverlayFrameAnchor(0f, -1f)  // Anchor at bottom-center of watermark
+        .setBackgroundFrameAnchor(0f, -1f)  // Position at very bottom of video
+        .build()
+    } catch (e: Exception) {
+      watermarkBitmap.recycle()
+      promise.reject("STEP9_OVERLAY_SETTINGS_ERROR", "[Step 9] Failed to create overlay settings: ${e.message}", e)
+      return
+    }
 
-    // Create the bitmap overlay with settings
-    val bitmapOverlay = BitmapOverlay.createStaticBitmapOverlay(
-      watermarkBitmap,
-      overlaySettings
-    )
+    // Step 10: Create the bitmap overlay with settings
+    val bitmapOverlay = try {
+      BitmapOverlay.createStaticBitmapOverlay(
+        watermarkBitmap,
+        overlaySettings
+      )
+    } catch (e: Exception) {
+      watermarkBitmap.recycle()
+      promise.reject("STEP10_BITMAP_OVERLAY_ERROR", "[Step 10] Failed to create bitmap overlay: ${e.message}", e)
+      return
+    }
 
-    // Create overlay effect with proper typing
-    val overlayEffect = OverlayEffect(ImmutableList.of<TextureOverlay>(bitmapOverlay))
+    // Step 11: Create overlay effect with proper typing
+    val overlayEffect = try {
+      OverlayEffect(ImmutableList.of<TextureOverlay>(bitmapOverlay))
+    } catch (e: Exception) {
+      watermarkBitmap.recycle()
+      promise.reject("STEP11_OVERLAY_EFFECT_ERROR", "[Step 11] Failed to create overlay effect: ${e.message}", e)
+      return
+    }
 
-    // Create effects with video overlay
+    // Step 12: Create effects with video overlay
     val effects = Effects(
       /* audioProcessors= */ listOf(),
       /* videoEffects= */ listOf(overlayEffect)
     )
 
-    // Create media item from video
+    // Step 13: Create media item from video
     val mediaItem = MediaItem.fromUri("file://$cleanVideoPath")
 
-    // Create edited media item with effects
-    val editedMediaItem = EditedMediaItem.Builder(mediaItem)
-      .setEffects(effects)
-      .build()
+    // Step 14: Create edited media item with effects
+    val editedMediaItem = try {
+      EditedMediaItem.Builder(mediaItem)
+        .setEffects(effects)
+        .build()
+    } catch (e: Exception) {
+      watermarkBitmap.recycle()
+      promise.reject("STEP14_EDITED_MEDIA_ERROR", "[Step 14] Failed to create edited media item: ${e.message}", e)
+      return
+    }
 
     // Handler for main thread callbacks
     val mainHandler = Handler(Looper.getMainLooper())
 
-    // Build and start transformer
+    // Step 15: Build and start transformer
     mainHandler.post {
-      val transformer = Transformer.Builder(context)
-        .addListener(object : Transformer.Listener {
-          override fun onCompleted(composition: Composition, exportResult: ExportResult) {
-            watermarkBitmap.recycle()
-            promise.resolve(cleanOutputPath)
-          }
+      try {
+        val transformer = Transformer.Builder(context)
+          .addListener(object : Transformer.Listener {
+            override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+              watermarkBitmap.recycle()
+              promise.resolve(cleanOutputPath)
+            }
 
-          override fun onError(
-            composition: Composition,
-            exportResult: ExportResult,
-            exportException: ExportException
-          ) {
-            watermarkBitmap.recycle()
-            promise.reject(
-              "EXPORT_FAILED",
-              "Video export failed: ${exportException.message ?: "Unknown error"}",
-              exportException
-            )
-          }
-        })
-        .build()
+            override fun onError(
+              composition: Composition,
+              exportResult: ExportResult,
+              exportException: ExportException
+            ) {
+              watermarkBitmap.recycle()
+              promise.reject(
+                "STEP15_TRANSFORM_ERROR",
+                "[Step 15] Video transform failed (video: ${videoWidth.toInt()}x${videoHeight.toInt()}, rotation: $rotation, watermark: ${watermarkWidth.toInt()}x${watermarkHeight.toInt()}, scale: $scale): ${exportException.message ?: "Unknown error"}",
+                exportException
+              )
+            }
+          })
+          .build()
 
-      transformer.start(editedMediaItem, cleanOutputPath)
+        transformer.start(editedMediaItem, cleanOutputPath)
+      } catch (e: Exception) {
+        watermarkBitmap.recycle()
+        promise.reject("STEP15_TRANSFORMER_BUILD_ERROR", "[Step 15] Failed to build/start transformer: ${e.message}", e)
+      }
     }
   }
 }
