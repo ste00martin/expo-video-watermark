@@ -196,7 +196,7 @@ class ExpoVideoWatermarkModule : Module() {
           .addListener(object : Transformer.Listener {
             override fun onCompleted(composition: Composition, exportResult: ExportResult) {
               watermarkBitmap.recycle()
-              promise.resolve(cleanOutputPath)
+              promise.resolve("file://$cleanOutputPath")
             }
 
             override fun onError(
