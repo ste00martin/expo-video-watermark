@@ -65,11 +65,27 @@ class ExpoVideoWatermarkModule : Module() {
       return
     }
 
-    // Load the watermark bitmap
-    val watermarkBitmap: Bitmap? = BitmapFactory.decodeFile(cleanImagePath)
-    if (watermarkBitmap == null) {
+    // Load the watermark bitmap with ARGB_8888 config for GPU compatibility
+    val options = BitmapFactory.Options().apply {
+      inPreferredConfig = Bitmap.Config.ARGB_8888
+    }
+    val decodedBitmap: Bitmap? = BitmapFactory.decodeFile(cleanImagePath, options)
+    if (decodedBitmap == null) {
       promise.reject("IMAGE_DECODE_ERROR", "Failed to decode image at: $cleanImagePath", null)
       return
+    }
+
+    // Ensure bitmap is in ARGB_8888 format (required for Media3 GPU processing)
+    val watermarkBitmap: Bitmap = if (decodedBitmap.config != Bitmap.Config.ARGB_8888) {
+      val converted = decodedBitmap.copy(Bitmap.Config.ARGB_8888, false)
+      decodedBitmap.recycle()
+      if (converted == null) {
+        promise.reject("IMAGE_DECODE_ERROR", "Failed to convert image to ARGB_8888 format", null)
+        return
+      }
+      converted
+    } else {
+      decodedBitmap
     }
 
     // Ensure output directory exists
@@ -90,13 +106,21 @@ class ExpoVideoWatermarkModule : Module() {
       return
     }
 
-    val videoWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toFloatOrNull() ?: 0f
-    val videoHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toFloatOrNull() ?: 0f
+    val rawVideoWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toFloatOrNull() ?: 0f
+    val rawVideoHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toFloatOrNull() ?: 0f
+    val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
     retriever.release()
 
-    if (videoWidth <= 0 || videoHeight <= 0) {
+    if (rawVideoWidth <= 0 || rawVideoHeight <= 0) {
       promise.reject("VIDEO_METADATA_ERROR", "Failed to get video dimensions", null)
       return
+    }
+
+    // Account for video rotation - swap dimensions if rotated 90 or 270 degrees
+    val (videoWidth, videoHeight) = if (rotation == 90 || rotation == 270) {
+      rawVideoHeight to rawVideoWidth
+    } else {
+      rawVideoWidth to rawVideoHeight
     }
 
     // Calculate scale to make watermark span full video width, maintaining aspect ratio
