@@ -11,7 +11,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.OverlayEffect
-import androidx.media3.effect.OverlaySettings
+import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.TextureOverlay
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
@@ -106,7 +106,7 @@ class ExpoVideoWatermarkModule : Module() {
     // Create overlay settings for full-width bottom positioning
     // In Media3, coordinates are normalized: (0,0) is center
     // x range [-1, 1] (left to right), y range [-1, 1] (bottom to top)
-    val overlaySettings = OverlaySettings.Builder()
+    val overlaySettings = StaticOverlaySettings.Builder()
       .setScale(scale, scale)  // Scale uniformly to match video width
       .setOverlayFrameAnchor(0f, -1f)  // Anchor at bottom-center of watermark
       .setBackgroundFrameAnchor(0f, -1f)  // Position at very bottom of video
