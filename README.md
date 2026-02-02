@@ -5,13 +5,13 @@ An Expo native module for adding watermark images to videos on iOS and Android.
 ## Installation
 
 ```bash
-npx expo install expo-video-watermark
+npx expo install @stefanmartin/expo-video-watermark
 ```
 
 ## Usage
 
 ```typescript
-import ExpoVideoWatermark from 'expo-video-watermark';
+import ExpoVideoWatermark from '@stefanmartin/expo-video-watermark';
 
 // Add a watermark to a video
 const outputPath = await ExpoVideoWatermark.watermarkVideo(
