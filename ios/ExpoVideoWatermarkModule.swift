@@ -86,30 +86,19 @@ public class ExpoVideoWatermarkModule: Module {
     videoLayer.frame = CGRect(origin: .zero, size: videoSize)
     parentLayer.addSublayer(videoLayer)
 
-    // Create watermark layer positioned at bottom-right
+    // Create watermark layer spanning full width at bottom
     let watermarkLayer = CALayer()
     watermarkLayer.contents = watermarkImage.cgImage
 
-    let padding: CGFloat = 20
-    let maxWatermarkWidth = videoSize.width * 0.25
-    let maxWatermarkHeight = videoSize.height * 0.25
+    // Scale watermark to match video width, maintaining aspect ratio
+    let watermarkWidth = videoSize.width
+    let aspectRatio = watermarkImage.size.height / watermarkImage.size.width
+    let watermarkHeight = watermarkWidth * aspectRatio
 
-    var watermarkWidth = watermarkImage.size.width
-    var watermarkHeight = watermarkImage.size.height
-
-    // Scale down watermark if too large
-    if watermarkWidth > maxWatermarkWidth || watermarkHeight > maxWatermarkHeight {
-      let widthRatio = maxWatermarkWidth / watermarkWidth
-      let heightRatio = maxWatermarkHeight / watermarkHeight
-      let scale = min(widthRatio, heightRatio)
-      watermarkWidth *= scale
-      watermarkHeight *= scale
-    }
-
-    // Position at bottom-center (Core Animation y=0 is bottom)
+    // Position at very bottom (Core Animation y=0 is bottom)
     watermarkLayer.frame = CGRect(
-      x: (videoSize.width - watermarkWidth) / 2,
-      y: padding,
+      x: 0,
+      y: 0,
       width: watermarkWidth,
       height: watermarkHeight
     )
