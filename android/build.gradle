@@ -9,6 +9,7 @@ version = '0.2.1'
 android {
   namespace "expo.modules.videowatermark"
   defaultConfig {
+    minSdk 33
     versionCode 2
     versionName "0.2.1"
   }
