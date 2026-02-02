@@ -28,9 +28,7 @@
   "author": "Stefan Martin <ste00martin@gmail.com> (https://github.com/ste00martin)",
   "license": "MIT",
   "homepage": "https://github.com/ste00martin/expo-video-watermark#readme",
-  "dependencies": {
-    "expo-file-system": "~19.0.21"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/react": "~19.1.0",
     "expo": "^54.0.27",

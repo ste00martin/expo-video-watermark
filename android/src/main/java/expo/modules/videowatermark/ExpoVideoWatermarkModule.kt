@@ -74,12 +74,12 @@ class ExpoVideoWatermarkModule : Module() {
       outputFile.delete()
     }
 
-    // Create overlay settings for bottom-right positioning
+    // Create overlay settings for bottom-center positioning
     // In Media3, coordinates are normalized: (0,0) is center
     // x range [-1, 1] (left to right), y range [-1, 1] (bottom to top)
     val overlaySettings = OverlaySettings.Builder()
-      .setOverlayFrameAnchor(1f, -1f)      // Anchor at bottom-right of watermark
-      .setBackgroundFrameAnchor(0.85f, -0.85f)  // Position near bottom-right of video with margin
+      .setOverlayFrameAnchor(0f, -1f)      // Anchor at bottom-center of watermark
+      .setBackgroundFrameAnchor(0f, -0.85f)  // Position at bottom-center of video with margin
       .build()
 
     // Create the bitmap overlay

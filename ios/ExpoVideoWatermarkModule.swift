@@ -106,9 +106,9 @@ public class ExpoVideoWatermarkModule: Module {
       watermarkHeight *= scale
     }
 
-    // Position at bottom-right (Core Animation y=0 is bottom)
+    // Position at bottom-center (Core Animation y=0 is bottom)
     watermarkLayer.frame = CGRect(
-      x: videoSize.width - watermarkWidth - padding,
+      x: (videoSize.width - watermarkWidth) / 2,
       y: padding,
       width: watermarkWidth,
       height: watermarkHeight
