@@ -1,50 +1,138 @@
 package expo.modules.videowatermark
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.os.Handler
+import android.os.Looper
+import androidx.annotation.OptIn
+import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.effect.BitmapOverlay
+import androidx.media3.effect.OverlayEffect
+import androidx.media3.effect.OverlaySettings
+import androidx.media3.transformer.Composition
+import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.Effects
+import androidx.media3.transformer.ExportException
+import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.Transformer
+import com.google.common.collect.ImmutableList
+import expo.modules.kotlin.Promise
+import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import java.net.URL
+import java.io.File
 
 class ExpoVideoWatermarkModule : Module() {
-  // Each module class must implement the definition function. The definition consists of components
-  // that describes the module's functionality and behavior.
-  // See https://docs.expo.dev/modules/module-api for more details about available components.
+  private val context: Context
+    get() = appContext.reactContext ?: throw Exceptions.AppContextLost()
+
+  @OptIn(UnstableApi::class)
   override fun definition() = ModuleDefinition {
-    // Sets the name of the module that JavaScript code will use to refer to the module. Takes a string as an argument.
-    // Can be inferred from module's class name, but it's recommended to set it explicitly for clarity.
-    // The module will be accessible from `requireNativeModule('ExpoVideoWatermark')` in JavaScript.
     Name("ExpoVideoWatermark")
 
-    // Defines constant property on the module.
-    Constant("PI") {
-      Math.PI
+    AsyncFunction("watermarkVideo") { videoPath: String, imagePath: String, outputPath: String, promise: Promise ->
+      processWatermark(videoPath, imagePath, outputPath, promise)
+    }
+  }
+
+  @OptIn(UnstableApi::class)
+  private fun processWatermark(
+    videoPath: String,
+    imagePath: String,
+    outputPath: String,
+    promise: Promise
+  ) {
+    // Validate video file exists
+    val videoFile = File(videoPath)
+    if (!videoFile.exists()) {
+      promise.reject("VIDEO_NOT_FOUND", "Video file not found at path: $videoPath", null)
+      return
     }
 
-    // Defines event names that the module can send to JavaScript.
-    Events("onChange")
-
-    // Defines a JavaScript synchronous function that runs the native code on the JavaScript thread.
-    Function("hello") {
-      "Hello world! 👋"
+    // Validate image file exists
+    val imageFile = File(imagePath)
+    if (!imageFile.exists()) {
+      promise.reject("IMAGE_NOT_FOUND", "Watermark image not found at path: $imagePath", null)
+      return
     }
 
-    // Defines a JavaScript function that always returns a Promise and whose native code
-    // is by default dispatched on the different thread than the JavaScript runtime runs on.
-    AsyncFunction("setValueAsync") { value: String ->
-      // Send an event to JavaScript.
-      sendEvent("onChange", mapOf(
-        "value" to value
-      ))
+    // Load the watermark bitmap
+    val watermarkBitmap: Bitmap? = BitmapFactory.decodeFile(imagePath)
+    if (watermarkBitmap == null) {
+      promise.reject("IMAGE_DECODE_ERROR", "Failed to decode image at: $imagePath", null)
+      return
     }
 
-    // Enables the module to be used as a native view. Definition components that are accepted as part of
-    // the view definition: Prop, Events.
-    View(ExpoVideoWatermarkView::class) {
-      // Defines a setter for the `url` prop.
-      Prop("url") { view: ExpoVideoWatermarkView, url: URL ->
-        view.webView.loadUrl(url.toString())
-      }
-      // Defines an event that the view can send to JavaScript.
-      Events("onLoad")
+    // Ensure output directory exists
+    val outputFile = File(outputPath)
+    outputFile.parentFile?.mkdirs()
+
+    // Remove existing output file if present
+    if (outputFile.exists()) {
+      outputFile.delete()
+    }
+
+    // Create overlay settings for bottom-right positioning
+    // In Media3, coordinates are normalized: (0,0) is center
+    // x range [-1, 1] (left to right), y range [-1, 1] (bottom to top)
+    val overlaySettings = OverlaySettings.Builder()
+      .setOverlayFrameAnchor(1f, -1f)      // Anchor at bottom-right of watermark
+      .setBackgroundFrameAnchor(0.85f, -0.85f)  // Position near bottom-right of video with margin
+      .build()
+
+    // Create the bitmap overlay
+    val bitmapOverlay = BitmapOverlay.createStaticBitmapOverlay(
+      watermarkBitmap,
+      overlaySettings
+    )
+
+    // Create overlay effect
+    val overlayEffect = OverlayEffect(ImmutableList.of(bitmapOverlay))
+
+    // Create effects with video overlay
+    val effects = Effects(
+      /* audioProcessors= */ listOf(),
+      /* videoEffects= */ listOf(overlayEffect)
+    )
+
+    // Create media item from video
+    val mediaItem = MediaItem.fromUri("file://$videoPath")
+
+    // Create edited media item with effects
+    val editedMediaItem = EditedMediaItem.Builder(mediaItem)
+      .setEffects(effects)
+      .build()
+
+    // Handler for main thread callbacks
+    val mainHandler = Handler(Looper.getMainLooper())
+
+    // Build and start transformer
+    mainHandler.post {
+      val transformer = Transformer.Builder(context)
+        .addListener(object : Transformer.Listener {
+          override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+            watermarkBitmap.recycle()
+            promise.resolve(outputPath)
+          }
+
+          override fun onError(
+            composition: Composition,
+            exportResult: ExportResult,
+            exportException: ExportException
+          ) {
+            watermarkBitmap.recycle()
+            promise.reject(
+              "EXPORT_FAILED",
+              "Video export failed: ${exportException.message ?: "Unknown error"}",
+              exportException
+            )
+          }
+        })
+        .build()
+
+      transformer.start(editedMediaItem, outputPath)
     }
   }
 }
