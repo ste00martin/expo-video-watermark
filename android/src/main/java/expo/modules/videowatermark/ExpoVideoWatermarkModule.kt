@@ -19,6 +19,8 @@ import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.TextureOverlay
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.EditedMediaItemSequence
+import androidx.media3.common.C
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
@@ -329,27 +331,33 @@ class ExpoVideoWatermarkModule : Module() {
     // Step 13: Create media item from video
     val mediaItem = MediaItem.fromUri("file://$cleanVideoPath")
 
-    // Step 14: Create edited media item, requesting HDR to SDR tone-mapping if needed.
-    // This is the modern API for handling HDR in Media3, replacing the deprecated setHdrMode.
+    // Step 14: Create edited media item (HDR mode is set on Composition, not EditedMediaItem in 1.9.1+)
     val editedMediaItem = try {
-      val builder = EditedMediaItem.Builder(mediaItem).setEffects(effects)
-      if (isHdr) {
-        Log.d(TAG, "[Step 14] HDR video detected. Requesting tone-mapping.")
-        builder.setForceHdrToSdrToneMap(true)
-      } else {
-        Log.d(TAG, "[Step 14] SDR video detected. No tone-mapping needed.")
-      }
-      builder.build()
+      EditedMediaItem.Builder(mediaItem)
+        .setEffects(effects)
+        .build()
     } catch (e: Exception) {
       scaledWatermark.recycle()
       promise.reject("STEP14_EDITED_MEDIA_ERROR", "[Step 14] Failed to create edited media item: ${e.message}", e)
       return
     }
 
-    // Step 14b: Create composition
+    // Step 14b: Create composition with EditedMediaItemSequence (required in Media3 1.9.1+)
     val composition = try {
-      Composition.Builder(listOf(editedMediaItem))
+      // Wrap EditedMediaItem in a sequence (must specify track types in 1.9.1+)
+      val sequence = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_VIDEO, C.TRACK_TYPE_AUDIO))
+        .addItem(editedMediaItem)
         .build()
+
+      // Build composition with HDR mode if needed
+      val compositionBuilder = Composition.Builder(sequence)
+      if (isHdr) {
+        Log.d(TAG, "[Step 14b] HDR video detected. Applying tone-mapping to composition.")
+        compositionBuilder.setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_MEDIACODEC)
+      } else {
+        Log.d(TAG, "[Step 14b] SDR video detected. No tone-mapping needed.")
+      }
+      compositionBuilder.build()
     } catch (e: Exception) {
       scaledWatermark.recycle()
       promise.reject("STEP14B_COMPOSITION_ERROR", "[Step 14b] Failed to create composition: ${e.message}", e)
