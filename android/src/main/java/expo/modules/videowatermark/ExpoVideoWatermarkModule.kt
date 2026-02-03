@@ -20,7 +20,6 @@ import androidx.media3.effect.TextureOverlay
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
-import androidx.media3.common.C
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
@@ -342,15 +341,13 @@ class ExpoVideoWatermarkModule : Module() {
       return
     }
 
-    // Step 14b: Create composition with EditedMediaItemSequence (required in Media3 1.9.1+)
-    val composition = try {
-      // Wrap EditedMediaItem in a sequence (must specify track types in 1.9.1+)
-      val sequence = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_VIDEO, C.TRACK_TYPE_AUDIO))
-        .addItem(editedMediaItem)
-        .build()
+    // Step 14b: Create composition with EditedMediaItemSequence
+    val composition: Composition = try {
+      // Wrap EditedMediaItem in a sequence (Media3 1.8.0 API)
+      val sequence = EditedMediaItemSequence.Builder(listOf(editedMediaItem)).build()
 
       // Build composition with HDR mode if needed
-      val compositionBuilder = Composition.Builder(sequence)
+      val compositionBuilder = Composition.Builder(listOf(sequence))
       if (isHdr) {
         Log.d(TAG, "[Step 14b] HDR video detected. Applying tone-mapping to composition.")
         compositionBuilder.setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_MEDIACODEC)
@@ -383,7 +380,7 @@ class ExpoVideoWatermarkModule : Module() {
           .addListener(object : Transformer.Listener {
             override fun onCompleted(composition: Composition, exportResult: ExportResult) {
               Log.d(TAG, "[Step 15] Transform completed successfully")
-              Log.d(TAG, "[Step 15] Export result - durationMillis: ${exportResult.durationMillis}, " +
+              Log.d(TAG, "[Step 15] Export result - durationMs: ${exportResult.durationMs}, " +
                 "fileSizeBytes: ${exportResult.fileSizeBytes}, " +
                 "averageAudioBitrate: ${exportResult.averageAudioBitrate}, " +
                 "averageVideoBitrate: ${exportResult.averageVideoBitrate}, " +
@@ -419,7 +416,7 @@ class ExpoVideoWatermarkModule : Module() {
                 .addListener(object : Transformer.Listener {
                   override fun onCompleted(composition: Composition, hevcExportResult: ExportResult) {
                     Log.d(TAG, "[Step 16] H.265 re-encode completed successfully")
-                    Log.d(TAG, "[Step 16] Export result - durationMillis: ${hevcExportResult.durationMillis}, " +
+                    Log.d(TAG, "[Step 16] Export result - durationMs: ${hevcExportResult.durationMs}, " +
                       "fileSizeBytes: ${hevcExportResult.fileSizeBytes}, " +
                       "averageAudioBitrate: ${hevcExportResult.averageAudioBitrate}, " +
                       "averageVideoBitrate: ${hevcExportResult.averageVideoBitrate}, " +
@@ -509,7 +506,7 @@ class ExpoVideoWatermarkModule : Module() {
                 appendLine()
                 appendLine("--- Output Info ---")
                 appendLine("Output path: $cleanOutputPath")
-                appendLine("Partial export result - durationMillis: ${exportResult.durationMillis}, " +
+                appendLine("Partial export result - durationMs: ${exportResult.durationMs}, " +
                   "fileSizeBytes: ${exportResult.fileSizeBytes}")
                 appendLine()
                 appendLine("--- Full Stack Trace ---")
