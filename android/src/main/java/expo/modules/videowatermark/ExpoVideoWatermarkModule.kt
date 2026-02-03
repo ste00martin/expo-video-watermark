@@ -330,8 +330,6 @@ class ExpoVideoWatermarkModule : Module() {
         val transformer = Transformer.Builder(context)
           // Force H.264 output for maximum compatibility
           .setVideoMimeType(MimeTypes.VIDEO_H264)
-          // Enable HDR to SDR tone mapping for videos with HDR content
-          .setHdrMode(Transformer.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
           .addListener(object : Transformer.Listener {
             override fun onCompleted(composition: Composition, exportResult: ExportResult) {
               Log.d(TAG, "[Step 15] Transform completed successfully")
