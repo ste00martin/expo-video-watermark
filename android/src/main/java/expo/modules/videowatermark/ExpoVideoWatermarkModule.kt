@@ -349,8 +349,13 @@ class ExpoVideoWatermarkModule : Module() {
       // Build composition with HDR mode if needed
       val compositionBuilder = Composition.Builder(listOf(sequence))
       if (isHdr) {
-        Log.d(TAG, "[Step 14b] HDR video detected. Applying tone-mapping to composition.")
-        compositionBuilder.setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_MEDIACODEC)
+        // Use OpenGL-based tone-mapping instead of MediaCodec-based
+        // MediaCodec tone-mapping (HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_MEDIACODEC) is not
+        // widely supported and fails with ERROR_CODE_DECODING_FORMAT_UNSUPPORTED on many
+        // devices (e.g., Pixel 8 Pro with Exynos HEVC decoder). OpenGL tone-mapping is
+        // more compatible as it uses shader-based processing.
+        Log.d(TAG, "[Step 14b] HDR video detected. Applying OpenGL-based tone-mapping to composition.")
+        compositionBuilder.setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
       } else {
         Log.d(TAG, "[Step 14b] SDR video detected. No tone-mapping needed.")
       }
