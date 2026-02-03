@@ -228,6 +228,9 @@ class ExpoVideoWatermarkModule : Module() {
     val frameRate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)?.toFloatOrNull() ?: 0f
     val colorStandard = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_COLOR_STANDARD) ?: "unknown"
     val colorTransfer = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_COLOR_TRANSFER) ?: "unknown"
+    val colorTransferInt = colorTransfer.toIntOrNull()
+    // Check for HDR color transfer characteristics. 6 = PQ (ST2084), 7 = HLG. See MediaFormat constants.
+    val isHdr = colorTransferInt == 6 || colorTransferInt == 7
     retriever.release()
 
     // Build comprehensive video info string for debugging
@@ -237,7 +240,7 @@ class ExpoVideoWatermarkModule : Module() {
       append("duration=${duration}ms, ")
       append("frameRate=$frameRate, ")
       append("colorStandard=$colorStandard, ")
-      append("colorTransfer=$colorTransfer")
+      append("colorTransfer=$colorTransfer (isHdr=$isHdr)")
     }
     Log.d(TAG, "[Step 6] Video metadata: $videoInfo")
 
@@ -310,7 +313,8 @@ class ExpoVideoWatermarkModule : Module() {
     // Step 11: Create overlay effect with proper typing
     val overlayEffect = try {
       OverlayEffect(ImmutableList.of<TextureOverlay>(bitmapOverlay))
-    } catch (e: Exception) {
+    }
+    catch (e: Exception) {
       scaledWatermark.recycle()
       promise.reject("STEP11_OVERLAY_EFFECT_ERROR", "[Step 11] Failed to create overlay effect: ${e.message}", e)
       return
@@ -325,29 +329,33 @@ class ExpoVideoWatermarkModule : Module() {
     // Step 13: Create media item from video
     val mediaItem = MediaItem.fromUri("file://$cleanVideoPath")
 
-    // Step 14: Create edited media item with effects
+    // Step 14: Create edited media item, requesting HDR to SDR tone-mapping if needed.
+    // This is the modern API for handling HDR in Media3, replacing the deprecated setHdrMode.
     val editedMediaItem = try {
-      EditedMediaItem.Builder(mediaItem)
-        .setEffects(effects)
-        .build()
+      val builder = EditedMediaItem.Builder(mediaItem).setEffects(effects)
+      if (isHdr) {
+        Log.d(TAG, "[Step 14] HDR video detected. Requesting tone-mapping.")
+        builder.setForceHdrToSdrToneMap(true)
+      } else {
+        Log.d(TAG, "[Step 14] SDR video detected. No tone-mapping needed.")
+      }
+      builder.build()
     } catch (e: Exception) {
       scaledWatermark.recycle()
       promise.reject("STEP14_EDITED_MEDIA_ERROR", "[Step 14] Failed to create edited media item: ${e.message}", e)
       return
     }
 
-    // Step 14b: Create composition with HDR to SDR tone mapping
-    // Use MediaCodec-based tone mapping (avoids OpenGL frame processing issues on some devices)
+    // Step 14b: Create composition
     val composition = try {
       Composition.Builder(listOf(editedMediaItem))
-        .setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_MEDIACODEC)
         .build()
     } catch (e: Exception) {
       scaledWatermark.recycle()
       promise.reject("STEP14B_COMPOSITION_ERROR", "[Step 14b] Failed to create composition: ${e.message}", e)
       return
     }
-    Log.d(TAG, "[Step 14b] Created composition with HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_MEDIACODEC")
+    Log.d(TAG, "[Step 14b] Composition created successfully.")
 
     // Handler for main thread callbacks
     val mainHandler = Handler(Looper.getMainLooper())
