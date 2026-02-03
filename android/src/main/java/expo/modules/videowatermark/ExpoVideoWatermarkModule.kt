@@ -3,6 +3,7 @@ package expo.modules.videowatermark
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.MediaCodecList
 import android.media.MediaMetadataRetriever
 import android.os.Build
 import android.os.Handler
@@ -10,6 +11,7 @@ import android.os.Looper
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.OverlayEffect
@@ -34,6 +36,23 @@ import javax.microedition.khronos.egl.EGLContext
 class ExpoVideoWatermarkModule : Module() {
   companion object {
     private const val TAG = "ExpoVideoWatermark"
+
+    /**
+     * Check if the device has a hardware H.265/HEVC encoder
+     */
+    fun hasHevcEncoder(): Boolean {
+      return try {
+        val codecList = MediaCodecList(MediaCodecList.REGULAR_CODECS)
+        codecList.codecInfos.any { codecInfo ->
+          codecInfo.isEncoder && codecInfo.supportedTypes.any { type ->
+            type.equals(MimeTypes.VIDEO_H265, ignoreCase = true)
+          }
+        }
+      } catch (e: Exception) {
+        Log.w(TAG, "Failed to check HEVC encoder support: ${e.message}")
+        false
+      }
+    }
 
     /**
      * Get device information for debugging
@@ -309,6 +328,10 @@ class ExpoVideoWatermarkModule : Module() {
     mainHandler.post {
       try {
         val transformer = Transformer.Builder(context)
+          // Force H.264 output for maximum compatibility
+          .setVideoMimeType(MimeTypes.VIDEO_H264)
+          // Enable HDR to SDR tone mapping for videos with HDR content
+          .setHdrMode(Transformer.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
           .addListener(object : Transformer.Listener {
             override fun onCompleted(composition: Composition, exportResult: ExportResult) {
               Log.d(TAG, "[Step 15] Transform completed successfully")
@@ -318,7 +341,88 @@ class ExpoVideoWatermarkModule : Module() {
                 "averageVideoBitrate: ${exportResult.averageVideoBitrate}, " +
                 "videoFrameCount: ${exportResult.videoFrameCount}")
               watermarkBitmap.recycle()
-              promise.resolve("file://$cleanOutputPath")
+
+              // Step 16: Re-encode to H.265 if device supports HEVC encoder
+              val supportsHevc = hasHevcEncoder()
+              Log.d(TAG, "[Step 16] HEVC encoder support: $supportsHevc")
+
+              if (!supportsHevc) {
+                Log.d(TAG, "[Step 16] Skipping H.265 re-encode - no HEVC encoder available")
+                promise.resolve("file://$cleanOutputPath")
+                return
+              }
+
+              // Create temp path for the H.264 watermarked video, rename current output
+              val h264File = File(cleanOutputPath)
+              val h264TempPath = cleanOutputPath.replace(".mp4", "_h264_temp.mp4")
+              val h264TempFile = File(h264TempPath)
+
+              if (!h264File.renameTo(h264TempFile)) {
+                Log.e(TAG, "[Step 16] Failed to rename H.264 file for re-encoding, returning H.264 output")
+                promise.resolve("file://$cleanOutputPath")
+                return
+              }
+
+              Log.d(TAG, "[Step 16] Starting H.265 re-encode from: $h264TempPath to: $cleanOutputPath")
+
+              // Build transformer for H.265 re-encoding
+              val hevcTransformer = Transformer.Builder(context)
+                .setVideoMimeType(MimeTypes.VIDEO_H265)
+                .addListener(object : Transformer.Listener {
+                  override fun onCompleted(composition: Composition, hevcExportResult: ExportResult) {
+                    Log.d(TAG, "[Step 16] H.265 re-encode completed successfully")
+                    Log.d(TAG, "[Step 16] Export result - durationMs: ${hevcExportResult.durationMs}, " +
+                      "fileSizeBytes: ${hevcExportResult.fileSizeBytes}, " +
+                      "averageAudioBitrate: ${hevcExportResult.averageAudioBitrate}, " +
+                      "averageVideoBitrate: ${hevcExportResult.averageVideoBitrate}, " +
+                      "videoFrameCount: ${hevcExportResult.videoFrameCount}")
+
+                    // Calculate compression ratio
+                    val h264Size = exportResult.fileSizeBytes
+                    val h265Size = hevcExportResult.fileSizeBytes
+                    if (h264Size > 0 && h265Size > 0) {
+                      val savings = ((h264Size - h265Size) * 100.0 / h264Size)
+                      Log.d(TAG, "[Step 16] Size reduction: H.264=${h264Size/1024}KB -> H.265=${h265Size/1024}KB (${String.format("%.1f", savings)}% smaller)")
+                    }
+
+                    // Clean up temp H.264 file
+                    if (h264TempFile.exists()) {
+                      h264TempFile.delete()
+                      Log.d(TAG, "[Step 16] Cleaned up temp H.264 file")
+                    }
+
+                    promise.resolve("file://$cleanOutputPath")
+                  }
+
+                  override fun onError(
+                    composition: Composition,
+                    hevcExportResult: ExportResult,
+                    hevcExportException: ExportException
+                  ) {
+                    val errorCodeName = getExportErrorCodeName(hevcExportException.errorCode)
+                    Log.e(TAG, "[Step 16] H.265 re-encode failed: $errorCodeName - ${hevcExportException.message}")
+                    Log.e(TAG, Log.getStackTraceString(hevcExportException))
+
+                    // Restore H.264 file as output on failure
+                    if (h264TempFile.exists()) {
+                      val outputFile = File(cleanOutputPath)
+                      if (outputFile.exists()) {
+                        outputFile.delete()
+                      }
+                      h264TempFile.renameTo(outputFile)
+                      Log.d(TAG, "[Step 16] Restored H.264 output after H.265 failure")
+                    }
+
+                    // Still resolve with the H.264 version rather than failing completely
+                    Log.d(TAG, "[Step 16] Returning H.264 output instead")
+                    promise.resolve("file://$cleanOutputPath")
+                  }
+                })
+                .build()
+
+              val hevcMediaItem = MediaItem.fromUri("file://$h264TempPath")
+              val hevcEditedMediaItem = EditedMediaItem.Builder(hevcMediaItem).build()
+              hevcTransformer.start(hevcEditedMediaItem, cleanOutputPath)
             }
 
             override fun onError(
