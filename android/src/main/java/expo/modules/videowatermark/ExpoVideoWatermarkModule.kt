@@ -254,34 +254,55 @@ class ExpoVideoWatermarkModule : Module() {
       rawVideoWidth to rawVideoHeight
     }
 
-    // Step 8: Calculate scale to make watermark span full video width, maintaining aspect ratio
-    val watermarkWidth = watermarkBitmap.width.toFloat()
-    val watermarkHeight = watermarkBitmap.height.toFloat()
-    val scale = videoWidth / watermarkWidth
+    // Step 8: Pre-scale watermark bitmap to match video width if needed
+    val originalWidth = watermarkBitmap.width
+    val originalHeight = watermarkBitmap.height
+    val targetWidth = videoWidth.toInt()
+    val scale = targetWidth.toFloat() / originalWidth.toFloat()
+    val targetHeight = (originalHeight * scale).toInt()
 
-    // Step 9: Create overlay settings for full-width bottom positioning
+    // Skip scaling if watermark already matches video width
+    val scaledWatermark: Bitmap = if (originalWidth == targetWidth) {
+      Log.d(TAG, "[Step 8] Watermark already matches video width (${originalWidth}x${originalHeight}), skipping scale")
+      watermarkBitmap
+    } else {
+      Log.d(TAG, "[Step 8] Pre-scaling watermark: ${originalWidth}x${originalHeight} -> ${targetWidth}x${targetHeight} (scale: $scale)")
+      try {
+        val scaled = Bitmap.createScaledBitmap(watermarkBitmap, targetWidth, targetHeight, true)
+        // Recycle original if we created a new scaled version
+        if (scaled !== watermarkBitmap) {
+          watermarkBitmap.recycle()
+        }
+        scaled
+      } catch (e: Exception) {
+        watermarkBitmap.recycle()
+        promise.reject("STEP8_SCALE_ERROR", "[Step 8] Failed to scale watermark bitmap: ${e.message}", e)
+        return
+      }
+    }
+
+    // Step 9: Create overlay settings for bottom positioning (no GPU scaling needed)
     // In Media3, coordinates are normalized: (0,0) is center
     // x range [-1, 1] (left to right), y range [-1, 1] (bottom to top)
     val overlaySettings = try {
       StaticOverlaySettings.Builder()
-        .setScale(scale, scale)  // Scale uniformly to match video width
         .setOverlayFrameAnchor(0f, -1f)  // Anchor at bottom-center of watermark
         .setBackgroundFrameAnchor(0f, -1f)  // Position at very bottom of video
         .build()
     } catch (e: Exception) {
-      watermarkBitmap.recycle()
+      scaledWatermark.recycle()
       promise.reject("STEP9_OVERLAY_SETTINGS_ERROR", "[Step 9] Failed to create overlay settings: ${e.message}", e)
       return
     }
 
-    // Step 10: Create the bitmap overlay with settings
+    // Step 10: Create the bitmap overlay with pre-scaled bitmap
     val bitmapOverlay = try {
       BitmapOverlay.createStaticBitmapOverlay(
-        watermarkBitmap,
+        scaledWatermark,
         overlaySettings
       )
     } catch (e: Exception) {
-      watermarkBitmap.recycle()
+      scaledWatermark.recycle()
       promise.reject("STEP10_BITMAP_OVERLAY_ERROR", "[Step 10] Failed to create bitmap overlay: ${e.message}", e)
       return
     }
@@ -290,7 +311,7 @@ class ExpoVideoWatermarkModule : Module() {
     val overlayEffect = try {
       OverlayEffect(ImmutableList.of<TextureOverlay>(bitmapOverlay))
     } catch (e: Exception) {
-      watermarkBitmap.recycle()
+      scaledWatermark.recycle()
       promise.reject("STEP11_OVERLAY_EFFECT_ERROR", "[Step 11] Failed to create overlay effect: ${e.message}", e)
       return
     }
@@ -310,10 +331,23 @@ class ExpoVideoWatermarkModule : Module() {
         .setEffects(effects)
         .build()
     } catch (e: Exception) {
-      watermarkBitmap.recycle()
+      scaledWatermark.recycle()
       promise.reject("STEP14_EDITED_MEDIA_ERROR", "[Step 14] Failed to create edited media item: ${e.message}", e)
       return
     }
+
+    // Step 14b: Create composition with HDR to SDR tone mapping
+    // Use MediaCodec-based tone mapping (avoids OpenGL frame processing issues on some devices)
+    val composition = try {
+      Composition.Builder(listOf(editedMediaItem))
+        .setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_MEDIACODEC)
+        .build()
+    } catch (e: Exception) {
+      scaledWatermark.recycle()
+      promise.reject("STEP14B_COMPOSITION_ERROR", "[Step 14b] Failed to create composition: ${e.message}", e)
+      return
+    }
+    Log.d(TAG, "[Step 14b] Created composition with HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_MEDIACODEC")
 
     // Handler for main thread callbacks
     val mainHandler = Handler(Looper.getMainLooper())
@@ -338,7 +372,7 @@ class ExpoVideoWatermarkModule : Module() {
                 "averageAudioBitrate: ${exportResult.averageAudioBitrate}, " +
                 "averageVideoBitrate: ${exportResult.averageVideoBitrate}, " +
                 "videoFrameCount: ${exportResult.videoFrameCount}")
-              watermarkBitmap.recycle()
+              scaledWatermark.recycle()
 
               // Step 16: Re-encode to H.265 if device supports HEVC encoder
               val supportsHevc = hasHevcEncoder()
@@ -452,7 +486,8 @@ class ExpoVideoWatermarkModule : Module() {
                 appendLine("Input path: $cleanVideoPath")
                 appendLine()
                 appendLine("--- Watermark Info ---")
-                appendLine("Dimensions: ${watermarkWidth.toInt()}x${watermarkHeight.toInt()}")
+                appendLine("Original dimensions: ${originalWidth}x${originalHeight}")
+                appendLine("Scaled dimensions: ${targetWidth}x${targetHeight}")
                 appendLine("Bitmap info: $bitmapInfo")
                 appendLine("Scale factor: $scale")
                 appendLine()
@@ -478,14 +513,14 @@ class ExpoVideoWatermarkModule : Module() {
                 causeLevel++
               }
 
-              watermarkBitmap.recycle()
+              scaledWatermark.recycle()
 
               // Reject with comprehensive error message
               val errorMessage = "[Step 15] Transform failed - " +
                 "ErrorCode: $errorCodeName (${exportException.errorCode}), " +
                 "Device: ${Build.MANUFACTURER} ${Build.MODEL} (API ${Build.VERSION.SDK_INT}), " +
                 "Video: ${videoWidth.toInt()}x${videoHeight.toInt()} $mimeType, " +
-                "Watermark: ${watermarkWidth.toInt()}x${watermarkHeight.toInt()}, " +
+                "Watermark: ${originalWidth}x${originalHeight} -> ${targetWidth}x${targetHeight}, " +
                 "Scale: $scale, " +
                 "Message: ${exportException.message ?: "Unknown error"}"
 
@@ -499,13 +534,13 @@ class ExpoVideoWatermarkModule : Module() {
           .build()
 
         Log.d(TAG, "[Step 15] Transformer built, starting export...")
-        transformer.start(editedMediaItem, cleanOutputPath)
+        transformer.start(composition, cleanOutputPath)
         Log.d(TAG, "[Step 15] Transformer.start() called, waiting for completion...")
       } catch (e: Exception) {
         Log.e(TAG, "[Step 15] Exception building/starting transformer", e)
         Log.e(TAG, "[Step 15] Device info: $deviceInfo")
         Log.e(TAG, "[Step 15] GL info: $glInfo")
-        watermarkBitmap.recycle()
+        scaledWatermark.recycle()
         promise.reject(
           "STEP15_TRANSFORMER_BUILD_ERROR",
           "[Step 15] Failed to build/start transformer on ${Build.MANUFACTURER} ${Build.MODEL}: ${e.message}",
