@@ -383,7 +383,7 @@ class ExpoVideoWatermarkModule : Module() {
           .addListener(object : Transformer.Listener {
             override fun onCompleted(composition: Composition, exportResult: ExportResult) {
               Log.d(TAG, "[Step 15] Transform completed successfully")
-              Log.d(TAG, "[Step 15] Export result - durationMs: ${exportResult.durationMs}, " +
+              Log.d(TAG, "[Step 15] Export result - durationMillis: ${exportResult.durationMillis}, " +
                 "fileSizeBytes: ${exportResult.fileSizeBytes}, " +
                 "averageAudioBitrate: ${exportResult.averageAudioBitrate}, " +
                 "averageVideoBitrate: ${exportResult.averageVideoBitrate}, " +
@@ -419,7 +419,7 @@ class ExpoVideoWatermarkModule : Module() {
                 .addListener(object : Transformer.Listener {
                   override fun onCompleted(composition: Composition, hevcExportResult: ExportResult) {
                     Log.d(TAG, "[Step 16] H.265 re-encode completed successfully")
-                    Log.d(TAG, "[Step 16] Export result - durationMs: ${hevcExportResult.durationMs}, " +
+                    Log.d(TAG, "[Step 16] Export result - durationMillis: ${hevcExportResult.durationMillis}, " +
                       "fileSizeBytes: ${hevcExportResult.fileSizeBytes}, " +
                       "averageAudioBitrate: ${hevcExportResult.averageAudioBitrate}, " +
                       "averageVideoBitrate: ${hevcExportResult.averageVideoBitrate}, " +
@@ -509,7 +509,7 @@ class ExpoVideoWatermarkModule : Module() {
                 appendLine()
                 appendLine("--- Output Info ---")
                 appendLine("Output path: $cleanOutputPath")
-                appendLine("Partial export result - durationMs: ${exportResult.durationMs}, " +
+                appendLine("Partial export result - durationMillis: ${exportResult.durationMillis}, " +
                   "fileSizeBytes: ${exportResult.fileSizeBytes}")
                 appendLine()
                 appendLine("--- Full Stack Trace ---")
