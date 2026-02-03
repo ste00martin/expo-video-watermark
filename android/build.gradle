@@ -19,7 +19,7 @@ android {
 }
 
 dependencies {
-  def media3_version = "1.9.1"
+  def media3_version = "1.8.0"
 
   // Core Editing & Transformation
   api "androidx.media3:media3-transformer:$media3_version"
